@@ -1,0 +1,14 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - python -m pip install --disable-pip-version-check --no-cache-dir "boto3>=1.35,<2" "huggingface_hub==0.35.3"
+  pre_build:
+    commands:
+      - aws s3 cp "s3://${S3_BUCKET}/${LIFECYCLE_SCRIPT_KEY}" /tmp/model_lifecycle.py
+  build:
+    commands:
+      - python /tmp/model_lifecycle.py

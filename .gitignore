@@ -1,0 +1,15 @@
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.venv/
+venv/
+
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfplan
+terraform/endpoint.zip
+terraform/crash.log
+terraform/terraform.tfvars
+
+.DS_Store

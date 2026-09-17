@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900" role="img" aria-labelledby="title desc">
+  <title id="title">Bedrock Model Foundry architecture</title>
+  <desc id="desc">Terraform provisions a cloud-only Hugging Face model import, then exposes two API-key-protected endpoint stacks with distinct Bedrock guardrails. IAM authorization is the adoption roadmap.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#172B4D"/>
+    </marker>
+    <style>
+      .title{font:700 34px Arial,sans-serif;fill:#102A43}.subtitle{font:400 18px Arial,sans-serif;fill:#334E68}
+      .laneTitle{font:700 18px Arial,sans-serif;fill:#102A43;letter-spacing:1px}.nodeTitle{font:700 17px Arial,sans-serif;fill:#102A43}
+      .nodeText{font:400 14px Arial,sans-serif;fill:#243B53}.small{font:400 13px Arial,sans-serif;fill:#334E68}
+      .arrow{stroke:#172B4D;stroke-width:3;fill:none;marker-end:url(#arrow)}.dash{stroke-dasharray:9 7}
+      .model{fill:#E6F6FF;stroke:#0073BB;stroke-width:3}.control{fill:#FFF4D6;stroke:#B7791F;stroke-width:3}
+      .runtime{fill:#E9F9EE;stroke:#26834A;stroke-width:3}.safety{fill:#F4EAFE;stroke:#7048A8;stroke-width:3}
+      .roadmap{fill:#F2F4F7;stroke:#52606D;stroke-width:3;stroke-dasharray:8 6}
+      .laneA{fill:#F5FAFF;stroke:#9FB3C8;stroke-width:2}.laneB{fill:#F8FFF9;stroke:#9FB3C8;stroke-width:2}
+    </style>
+  </defs>
+
+  <rect width="1400" height="900" fill="#FFFFFF"/>
+  <text x="55" y="58" class="title">Bedrock Model Foundry</text>
+  <text x="55" y="88" class="subtitle">Disposable open-model import with endpoint-specific guardrails</text>
+
+  <rect x="40" y="120" width="1320" height="285" rx="18" class="laneA"/>
+  <text x="65" y="153" class="laneTitle">MODEL LIFECYCLE, MANAGED BY TERRAFORM AND RUN INSIDE AWS</text>
+
+  <rect x="70" y="190" width="190" height="105" rx="12" class="model"/>
+  <text x="165" y="226" text-anchor="middle" class="nodeTitle">Hugging Face</text>
+  <text x="165" y="252" text-anchor="middle" class="nodeText">Pinned Qwen snapshot</text>
+  <text x="165" y="274" text-anchor="middle" class="small">public, ungated model</text>
+
+  <rect x="315" y="190" width="210" height="105" rx="12" class="control"/>
+  <text x="420" y="226" text-anchor="middle" class="nodeTitle">CodeBuild</text>
+  <text x="420" y="252" text-anchor="middle" class="nodeText">download and validate</text>
+  <text x="420" y="274" text-anchor="middle" class="small">ephemeral cloud storage</text>
+
+  <rect x="580" y="190" width="190" height="105" rx="12" class="model"/>
+  <text x="675" y="226" text-anchor="middle" class="nodeTitle">Private S3</text>
+  <text x="675" y="252" text-anchor="middle" class="nodeText">HF model layout</text>
+  <text x="675" y="274" text-anchor="middle" class="small">temporary staging</text>
+
+  <rect x="825" y="190" width="220" height="105" rx="12" class="model"/>
+  <text x="935" y="226" text-anchor="middle" class="nodeTitle">Bedrock model import</text>
+  <text x="935" y="252" text-anchor="middle" class="nodeText">on-demand imported model</text>
+  <text x="935" y="274" text-anchor="middle" class="small">imperative AWS API</text>
+
+  <rect x="1100" y="190" width="200" height="105" rx="12" class="control"/>
+  <text x="1200" y="226" text-anchor="middle" class="nodeTitle">SSM parameter</text>
+  <text x="1200" y="252" text-anchor="middle" class="nodeText">imported-model ARN</text>
+  <text x="1200" y="274" text-anchor="middle" class="small">handoff to Terraform</text>
+
+  <path d="M260 242 H315" class="arrow"/><path d="M525 242 H580" class="arrow"/>
+  <path d="M770 242 H825" class="arrow"/><path d="M1045 242 H1100" class="arrow"/>
+
+  <rect x="315" y="325" width="730" height="50" rx="10" class="control"/>
+  <text x="680" y="356" text-anchor="middle" class="nodeText">terraform destroy triggers remote imported-model and S3 cleanup before infrastructure removal</text>
+
+  <rect x="40" y="435" width="1320" height="360" rx="18" class="laneB"/>
+  <text x="65" y="470" class="laneTitle">CUSTOMER INFERENCE PATH, SAME MODEL WITH TWO DIFFERENT SAFETY POLICIES</text>
+
+  <rect x="70" y="555" width="170" height="100" rx="12" class="runtime"/>
+  <text x="155" y="593" text-anchor="middle" class="nodeTitle">Customer app</text>
+  <text x="155" y="619" text-anchor="middle" class="nodeText">OpenAI-style request</text>
+
+  <rect x="300" y="505" width="245" height="120" rx="12" class="runtime"/>
+  <text x="422" y="540" text-anchor="middle" class="nodeTitle">PII-mask endpoint</text>
+  <text x="422" y="566" text-anchor="middle" class="nodeText">API key and usage plan</text>
+  <text x="422" y="590" text-anchor="middle" class="small">dedicated Lambda and role</text>
+
+  <rect x="300" y="650" width="245" height="120" rx="12" class="runtime"/>
+  <text x="422" y="685" text-anchor="middle" class="nodeTitle">Denied-topic endpoint</text>
+  <text x="422" y="711" text-anchor="middle" class="nodeText">API key and usage plan</text>
+  <text x="422" y="735" text-anchor="middle" class="small">dedicated Lambda and role</text>
+
+  <rect x="625" y="505" width="260" height="120" rx="12" class="safety"/>
+  <text x="755" y="540" text-anchor="middle" class="nodeTitle">PII guardrail version</text>
+  <text x="755" y="566" text-anchor="middle" class="nodeText">ApplyGuardrail input</text>
+  <text x="755" y="590" text-anchor="middle" class="nodeText">ApplyGuardrail output</text>
+
+  <rect x="625" y="650" width="260" height="120" rx="12" class="safety"/>
+  <text x="755" y="685" text-anchor="middle" class="nodeTitle">Topic guardrail version</text>
+  <text x="755" y="711" text-anchor="middle" class="nodeText">ApplyGuardrail input</text>
+  <text x="755" y="735" text-anchor="middle" class="nodeText">ApplyGuardrail output</text>
+
+  <rect x="965" y="555" width="260" height="100" rx="12" class="model"/>
+  <text x="1095" y="593" text-anchor="middle" class="nodeTitle">Imported Qwen model</text>
+  <text x="1095" y="619" text-anchor="middle" class="nodeText">one ARN, on-demand inference</text>
+
+  <path d="M240 605 C270 605 270 565 300 565" class="arrow"/>
+  <path d="M240 605 C270 605 270 710 300 710" class="arrow"/>
+  <path d="M545 565 H625" class="arrow"/><path d="M545 710 H625" class="arrow"/>
+  <path d="M885 565 C925 565 925 590 965 590" class="arrow"/>
+  <path d="M885 710 C925 710 925 620 965 620" class="arrow"/>
+
+  <rect x="70" y="820" width="500" height="55" rx="10" class="roadmap"/>
+  <text x="320" y="853" text-anchor="middle" class="nodeText">Roadmap: IAM/SigV4 with an STS assumed caller identity</text>
+  <path d="M320 820 C260 780 210 725 160 655" class="arrow dash"/>
+</svg>

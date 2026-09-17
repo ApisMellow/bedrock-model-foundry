@@ -1,0 +1,20 @@
+flowchart LR
+  TF[Terraform apply] --> CB[CodeBuild lifecycle job]
+  HF[Hugging Face pinned Qwen snapshot] --> CB
+  CB --> S3[Private S3 model staging]
+  S3 --> BI[Bedrock Custom Model Import]
+  BI --> ARN[SSM imported-model ARN]
+  ARN --> EPA[PII-mask endpoint stack]
+  ARN --> EPB[Denied-topic endpoint stack]
+
+  C[Customer app] -->|API key| EPA
+  C -->|API key| EPB
+  EPA --> GA[ApplyGuardrail input and output]
+  EPB --> GB[ApplyGuardrail input and output]
+  GA --> M[Imported model]
+  GB --> M
+
+  IAM[IAM and assumed identity roadmap] -. replaces API keys .-> C
+  TD[Terraform destroy] --> CB
+  CB -->|cleanup| BI
+  CB -->|cleanup| S3

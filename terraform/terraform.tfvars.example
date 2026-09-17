@@ -1,0 +1,9 @@
+aws_region     = "us-east-1"
+project_name   = "bedrock-model-foundry"
+hf_model_id    = "Qwen/Qwen2.5-1.5B-Instruct"
+model_revision = "775b11afaf83e0dc75bd5abaf90133e47b3ec082"
+
+tags = {
+  Environment = "demo"
+  Owner       = "apis-mellow"
+}
