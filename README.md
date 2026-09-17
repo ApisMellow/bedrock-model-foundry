@@ -71,6 +71,32 @@ terraform -chdir=terraform apply demo.tfplan
 
 The apply can take a while. CodeBuild downloads about 3 GB of model weights, uploads the snapshot to S3, submits the import job, and waits for Bedrock.
 
+Every apply ends with a readable summary of what was deployed:
+
+```text
+Bedrock Model Foundry - us-east-1 / 000000000000
+
+endpoints
+  denied-topic  https://aaaaaaaaaa.execute-api.us-east-1.amazonaws.com/demo/v1/chat/completions
+                guardrail aaaaaaaaaaaa v1 - blocks credential-sharing
+  pii-mask      https://bbbbbbbbbb.execute-api.us-east-1.amazonaws.com/demo/v1/chat/completions
+                guardrail bbbbbbbbbbbb v1 - anonymizes email, name, phone
+
+model         arn:aws:bedrock:us-east-1:000000000000:imported-model/xxxxxxxxxxxx
+build project bedrock-model-foundry-model-lifecycle
+
+api keys      terraform -chdir=terraform output -json endpoint_api_keys
+              (the harness config holds them; they are never printed here)
+
+next          python3 scripts/generate-harness-config.py
+              python3 harness/foundry_shim.py
+              opencode
+```
+
+The summary carries no API key, so it is safe to leave on a shared screen.
+`scripts/generate-harness-config.py` also writes it to `demo-endpoints.txt`,
+which Git ignores, for a second window during a demonstration.
+
 Retrieve the endpoint URLs:
 
 ```bash
@@ -115,11 +141,40 @@ The generator writes `harness/foundry-endpoints.json` with the endpoint URLs
 and API keys, and a project-level `opencode.json` that points at the shim and
 contains no secret. Git ignores both.
 
-Run `opencode` from this directory and every deployed endpoint appears as a
-model: selecting `foundry/pii-mask` or `foundry/denied-topic` switches
-guardrails mid-conversation against the same imported model. A blocked request
-arrives as an assistant turn carrying the guardrail's own message, so a demo
-shows the refusal in the transcript instead of a client-side error.
+The generator also writes `demo-endpoints.txt`, the same summary Terraform
+prints, so the URLs and guardrail versions stay visible while the harness runs.
+
+Run `opencode` from this directory. Every deployed endpoint is registered as a
+model:
+
+```bash
+opencode models | grep foundry
+```
+
+```text
+foundry/denied-topic
+foundry/pii-mask
+```
+
+Switching model switches guardrail, against the same imported model, without
+leaving the conversation:
+
+| Key | Effect |
+|---|---|
+| `F2` | next recently used model; with two endpoints registered this toggles between them |
+| `ctrl+x` then `m` | open the model picker |
+| `/models` | the same picker, typed |
+
+That makes the demonstration a single keystroke: ask a question that carries
+an email address, press `F2`, and ask it again. The anonymizing endpoint
+returns the address masked and the other returns it intact, from one model,
+because the endpoint configuration and not the model decides the policy. Ask
+the credential question on `foundry/denied-topic` and the request is refused
+before inference.
+
+A blocked request arrives as an assistant turn carrying the guardrail's own
+message, so the refusal appears in the transcript instead of as a client-side
+error.
 
 Any OpenAI-compatible client can use the shim by pointing its base URL at
 `http://127.0.0.1:8787/v1`. `scripts/smoke-test.py` and the endpoints
@@ -173,6 +228,7 @@ Multiple simultaneous imported models are listed in [the roadmap](docs/roadmap.m
 docs/
   architecture/              customer diagram and editable Mermaid source
   superpowers/               approved design and implementation plan
+  cloud-requirements.md      access required to run this demo
   roadmap.md                 IAM adoption and platform extension notes
   troubleshooting.md         import-role and environment checks
 harness/

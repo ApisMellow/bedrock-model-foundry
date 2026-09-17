@@ -17,3 +17,4 @@ terraform/terraform.tfvars
 # Generated harness config (endpoint file holds API keys)
 harness/foundry-endpoints.json
 opencode.json
+demo-endpoints.txt

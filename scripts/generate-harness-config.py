@@ -25,6 +25,17 @@ GUARDRAIL_LABELS = {
 }
 
 
+def terraform_output_raw(name: str) -> str:
+    completed = subprocess.run(
+        ["terraform", "-chdir=terraform", "output", "-raw", name],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    return completed.stdout
+
+
 def terraform_output(name: str):
     completed = subprocess.run(
         ["terraform", "-chdir=terraform", "output", "-json", name],
@@ -74,6 +85,12 @@ def opencode_config(names, base_url):
     }
 
 
+def write_summary(path: Path, summary: str) -> None:
+    """Persist Terraform's own summary text for a second window during a demo."""
+    path.write_text(summary if summary.endswith("\n") else summary + "\n")
+    print(f"wrote {path.name if path.parent == ROOT else path}")
+
+
 def write_json(path: Path, payload, *, private: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n")
@@ -96,6 +113,8 @@ def main() -> int:
         ROOT / "opencode.json",
         opencode_config(urls, f"http://{args.host}:{args.port}/v1"),
     )
+
+    write_summary(ROOT / "demo-endpoints.txt", terraform_output_raw("demo_summary"))
 
     print("\nnext:")
     print(f"  python3 harness/foundry_shim.py --port {args.port}")
