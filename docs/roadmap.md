@@ -54,6 +54,8 @@ Run three tests in a lab account before relying on inline enforcement:
 
 Repeat those calls with a Lambda role that has a `bedrock:GuardrailIdentifier` condition on `bedrock:InvokeModel`. Keep the explicit `ApplyGuardrail` path until both imported-model behaviors are proven.
 
-## Production controls
+## Shared observability and production controls
 
-A supported service also needs private network paths, customer-managed KMS keys, artifact checksum or signature verification, Bedrock invocation logging, quota alarms, budget alarms, a documented rollback process, and an owner for imported-model costs.
+The demo keeps structured Lambda logs inside resources it owns and exposes `api_gateway_access_log_destination_arn` for structured REST access logs. API Gateway REST execution access logging requires an account-wide CloudWatch role, so the disposable module does not create or replace that shared setting. An adoption stack should manage the account role and destination log group once, pass the group ARN to this module, and set retention centrally. Prompt and response bodies should remain excluded unless a reviewed data policy explicitly permits them.
+
+A supported service also needs private network paths, customer-managed KMS keys, artifact checksum or signature verification, Bedrock invocation logging, quota alarms, budget alarms, a documented rollback process, encrypted remote Terraform state, key rotation, and an owner for imported-model costs.

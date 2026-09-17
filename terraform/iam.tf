@@ -36,6 +36,12 @@ data "aws_iam_policy_document" "bedrock_import" {
     effect    = "Allow"
     actions   = ["s3:GetObject"]
     resources = ["${aws_s3_bucket.models.arn}/${local.model_prefix}/*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
   }
 
   statement {

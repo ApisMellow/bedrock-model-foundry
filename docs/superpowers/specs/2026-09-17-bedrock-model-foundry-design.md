@@ -40,9 +40,9 @@ Terraform creates:
 - an SSM parameter used as the handoff from the remote import job to Terraform;
 - two endpoint stacks, each containing a guardrail, immutable guardrail version, Lambda proxy, REST API route, API key, usage plan, logs, and least-privilege IAM role.
 
-A `terraform_data` resource invokes a small local orchestration script. That script only calls AWS APIs: it starts CodeBuild and waits for the remote build. It never downloads model artifacts. CodeBuild downloads the pinned Hugging Face snapshot, validates the required files, uploads them to S3, starts the Bedrock import, polls to a terminal state, and records the imported-model ARN in Parameter Store. A dependent Terraform data source reads the ARN before constructing endpoint IAM policies and Lambda configuration.
+A cleanup `terraform_data` anchor is recorded before a second, fallible import resource invokes a small local orchestration script. That script only calls AWS APIs: it starts CodeBuild and waits for the remote build. It never downloads model artifacts. CodeBuild downloads the pinned Hugging Face snapshot, validates the required files, uploads them to S3, starts the Bedrock import, polls to a terminal state, and records the imported-model ARN in Parameter Store. A dependent Terraform data source reads the ARN before constructing endpoint IAM policies and Lambda configuration.
 
-On `terraform destroy`, the `terraform_data` destroy provisioner starts the same CodeBuild project in cleanup mode. The remote cleanup deletes the imported model, removes the staged S3 objects, and clears the handoff parameter before Terraform removes the remaining infrastructure.
+On `terraform destroy`, the independent cleanup anchor starts the same CodeBuild project in cleanup mode even if the import resource was tainted. The remote cleanup deletes the imported model, removes the staged S3 objects, and clears the handoff parameter before Terraform removes the remaining infrastructure.
 
 ### Data plane
 
@@ -83,9 +83,9 @@ The first implementation supports one active imported model because the demo dea
 - S3 blocks all public access, uses server-side encryption, and is force-destroyable only because this is an explicitly disposable demo.
 - IAM permissions are separated between the CodeBuild lifecycle role, Bedrock import role, and each endpoint Lambda role.
 - Lambda roles can invoke only the selected imported-model ARN and apply only their endpoint guardrail.
-- API keys are sensitive Terraform outputs. They are not written to source files or logs.
+- API keys are sensitive Terraform outputs. They are not written to source files or logs, but they remain in Terraform state, which must use encrypted storage and restricted access outside a local demo.
 - Lambda environment variables contain resource identifiers, not credentials.
-- CloudWatch log groups have explicit short retention periods.
+- CloudWatch log groups have explicit short retention periods. Lambda writes structured correlation fields without prompt bodies. API Gateway's account-wide logging role is left to the adoption stack.
 - The model revision is pinned to make downloads reproducible and reduce supply-chain drift.
 - The cloud lifecycle validates the exact repository allowlist, required files, and allowed architecture metadata before upload or import.
 - A production implementation should add VPC endpoints/PrivateLink, customer-managed KMS keys, model invocation logging, artifact signatures or checksums, CI policy checks, and workload identity federation.
@@ -106,7 +106,7 @@ Local/offline checks:
 - Terraform formatting and validation;
 - Shell syntax checks;
 - Python unit tests for lifecycle validation, response extraction, guardrail intervention, and `ModelNotReadyException` mapping;
-- static scan proving prohibited model names are absent from project content, except for the explicit policy test fixture if required.
+- an offline repository-policy scan for excluded model identifiers, credential patterns, and local model artifacts.
 
 Credentialed integration checks:
 
@@ -116,7 +116,7 @@ Credentialed integration checks:
 4. The denied-topic endpoint blocks its configured topic.
 5. API calls without an API key fail.
 6. An idle model returns either normally or through the documented 503/retry path; the test records time to first successful response.
-7. `terraform destroy` removes the imported model and staged artifacts and leaves no known billable demo resource.
+7. `terraform destroy` removes the imported model and staged artifacts; the credentialed teardown audit finds no scoped demo resource.
 
 Live testing is explicitly allowed to occur on another machine or CI worker with suitable AWS permissions.
 

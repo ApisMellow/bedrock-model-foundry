@@ -1,7 +1,12 @@
-aws_region     = "us-east-1"
-project_name   = "bedrock-model-foundry"
-hf_model_id    = "Qwen/Qwen2.5-1.5B-Instruct"
-model_revision = "775b11afaf83e0dc75bd5abaf90133e47b3ec082"
+aws_region   = "us-east-1"
+project_name = "bedrock-model-foundry"
+
+# Optional: provide a pre-created CloudWatch log group ARN after the account-level
+# API Gateway CloudWatch role is configured by an adoption stack.
+# api_gateway_access_log_destination_arn = "arn:aws:logs:us-east-1:123456789012:log-group:/demo/api-access"
+
+# The checked-in defaults define the reviewed model and two demo endpoints.
+# Override the models or endpoints maps here only as a reviewed configuration change.
 
 tags = {
   Environment = "demo"

@@ -4,7 +4,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.model_lifecycle import Config, cleanup_model, import_model, validate_model_metadata
+from src.model_lifecycle import (
+    Config, _job_prefix, cleanup_model, import_model, validate_model_metadata,
+)
 
 
 MODEL_ID = "Qwen/Qwen2.5-1.5B-Instruct"
@@ -12,7 +14,7 @@ REVISION = "775b11afaf83e0dc75bd5abaf90133e47b3ec082"
 
 
 def write_model(path: Path, *, model_type: str = "qwen2") -> None:
-    path.mkdir()
+    path.mkdir(parents=True)
     (path / "config.json").write_text(json.dumps({
         "model_type": model_type,
         "architectures": ["Qwen2ForCausalLM"],
@@ -103,6 +105,16 @@ class FakeBedrock:
     def delete_imported_model(self, modelIdentifier):
         self.deleted.append(modelIdentifier)
 
+    def list_model_import_jobs(self, **kwargs):
+        return {"modelImportJobSummaries": []}
+
+    def list_imported_models(self, **kwargs):
+        summaries = [] if self.deleted else [{
+            "modelArn": "arn:aws:bedrock:us-east-1:123:imported-model/discovered",
+            "modelName": "demo-qwen",
+        }]
+        return {"modelSummaries": summaries}
+
 
 class FakeSSM:
     def __init__(self):
@@ -173,3 +185,159 @@ def test_validation_requires_chat_template(tmp_path):
     (model_dir / "tokenizer_config.json").write_text("{}")
     with pytest.raises(ValueError, match="chat_template"):
         validate_model_metadata(model_dir, MODEL_ID)
+
+
+class FailingPutSSM(FakeSSM):
+    def put_parameter(self, **kwargs):
+        raise RuntimeError("ssm unavailable")
+
+
+def test_completed_import_rolls_back_when_arn_publication_fails(tmp_path):
+    cfg = config(tmp_path)
+    s3, bedrock, ssm = FakeS3(), FakeBedrock(), FailingPutSSM()
+
+    def download(repo_id, revision, local_dir):
+        write_model(Path(local_dir))
+        return local_dir
+
+    with pytest.raises(RuntimeError, match="ssm unavailable"):
+        import_model(cfg, s3=s3, bedrock=bedrock, ssm=ssm, downloader=download, sleep=lambda _: None)
+
+    assert bedrock.deleted == ["arn:aws:bedrock:us-east-1:123:imported-model/demo"]
+
+
+def test_cleanup_discovers_model_by_exact_name_without_parameter(tmp_path):
+    cfg = config(tmp_path)
+    s3, bedrock, ssm = FakeS3(), FakeBedrock(), FakeSSM()
+
+    cleanup_model(cfg, s3=s3, bedrock=bedrock, ssm=ssm)
+
+    assert bedrock.deleted == ["arn:aws:bedrock:us-east-1:123:imported-model/discovered"]
+
+
+def test_import_token_changes_with_deployment_identity(tmp_path):
+    cfg_a = config(tmp_path / "a")
+    cfg_b = Config(**{
+        **cfg_a.__dict__,
+        "model_dir": tmp_path / "b" / "model",
+        "imported_model_name": "another-project-qwen",
+    })
+
+    def run(cfg):
+        s3, bedrock, ssm = FakeS3(), FakeBedrock(), FakeSSM()
+
+        def download(repo_id, revision, local_dir):
+            write_model(Path(local_dir))
+            return local_dir
+
+        import_model(cfg, s3=s3, bedrock=bedrock, ssm=ssm, downloader=download, sleep=lambda _: None)
+        return bedrock.create_args["clientRequestToken"]
+
+    assert run(cfg_a) != run(cfg_b)
+
+
+class PagedFakeBedrock(FakeBedrock):
+    def list_imported_models(self, **kwargs):
+        if "nextToken" not in kwargs:
+            return {
+                "modelSummaries": [{"modelName": "another-model", "modelArn": "other"}],
+                "nextToken": "page-2",
+            }
+        assert kwargs["nextToken"] == "page-2"
+        return {"modelSummaries": [{
+            "modelName": "demo-qwen",
+            "modelArn": "arn:aws:bedrock:us-east-1:123:imported-model/page-2",
+        }]}
+
+
+def test_cleanup_discovers_exact_model_across_pages(tmp_path):
+    cfg = config(tmp_path)
+    s3, bedrock, ssm = FakeS3(), PagedFakeBedrock(), FakeSSM()
+
+    cleanup_model(cfg, s3=s3, bedrock=bedrock, ssm=ssm)
+
+    assert bedrock.deleted == [
+        "arn:aws:bedrock:us-east-1:123:imported-model/page-2"
+    ]
+
+
+def test_import_token_is_stable_across_codebuild_retries(tmp_path):
+    cfg_a = config(tmp_path / "a")
+    cfg_b = Config(**{**cfg_a.__dict__, "model_dir": tmp_path / "b" / "model", "deployment_id": cfg_a.deployment_id})
+
+    def token(cfg):
+        s3, bedrock, ssm = FakeS3(), FakeBedrock(), FakeSSM()
+
+        def download(repo_id, revision, local_dir):
+            write_model(Path(local_dir))
+            return local_dir
+
+        import_model(cfg, s3=s3, bedrock=bedrock, ssm=ssm, downloader=download, sleep=lambda _: None)
+        return bedrock.create_args["clientRequestToken"]
+
+    assert token(cfg_a) == token(cfg_b)
+
+
+class InProgressBedrock(FakeBedrock):
+    def __init__(self):
+        super().__init__()
+        self.job_checks = 0
+
+    def list_model_import_jobs(self, **kwargs):
+        self.job_checks += 1
+        if self.job_checks == 1:
+            return {"modelImportJobSummaries": [{
+                "status": "InProgress",
+                "importedModelName": "demo-qwen",
+                "jobArn": "arn:aws:bedrock:us-east-1:123:model-import-job/pending",
+            }]}
+        return {"modelImportJobSummaries": [{
+            "status": "Completed",
+            "importedModelName": "demo-qwen",
+            "importedModelArn": "arn:aws:bedrock:us-east-1:123:imported-model/completed-late",
+        }]}
+
+    def list_imported_models(self, **kwargs):
+        return {"modelSummaries": []}
+
+
+def test_cleanup_waits_for_matching_import_job_before_deleting(tmp_path):
+    cfg = config(tmp_path)
+    s3, bedrock, ssm = FakeS3(), InProgressBedrock(), FakeSSM()
+    sleeps = []
+
+    cleanup_model(cfg, s3=s3, bedrock=bedrock, ssm=ssm, sleep=sleeps.append)
+
+    assert sleeps == [30]
+    assert bedrock.deleted == [
+        "arn:aws:bedrock:us-east-1:123:imported-model/completed-late"
+    ]
+
+
+class ResumableBedrock(FakeBedrock):
+    def __init__(self, cfg):
+        super().__init__()
+        self.cfg = cfg
+
+    def list_model_import_jobs(self, **kwargs):
+        return {"modelImportJobSummaries": [{
+            "status": "InProgress",
+            "jobName": _job_prefix(self.cfg),
+            "jobArn": "arn:aws:bedrock:us-east-1:123:model-import-job/resume",
+            "importedModelName": self.cfg.imported_model_name,
+        }]}
+
+
+def test_import_resumes_matching_in_progress_job_without_redownload(tmp_path):
+    cfg = config(tmp_path)
+    s3, bedrock, ssm = FakeS3(), ResumableBedrock(cfg), FakeSSM()
+
+    arn = import_model(
+        cfg, s3=s3, bedrock=bedrock, ssm=ssm,
+        downloader=lambda *args: pytest.fail("resume must not redownload"),
+        sleep=lambda _: None,
+    )
+
+    assert arn.endswith("imported-model/demo")
+    assert not hasattr(bedrock, "create_args")
+    assert s3.uploaded == []

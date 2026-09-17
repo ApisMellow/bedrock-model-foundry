@@ -17,7 +17,21 @@ if [[ -z "$region" ]]; then
   exit 2
 fi
 
-build_id="$(aws codebuild start-build --project-name "$CODEBUILD_PROJECT" --region "$region" --environment-variables-override "name=ACTION,value=$action,type=PLAINTEXT" --query 'build.id' --output text)"
+overrides=("name=ACTION,value=$action,type=PLAINTEXT")
+for name in \
+  HF_MODEL_ID MODEL_REVISION MODEL_DEPLOYMENT_ID S3_BUCKET S3_PREFIX SSM_PARAMETER_NAME \
+  IMPORT_ROLE_ARN IMPORTED_MODEL_NAME LIFECYCLE_SCRIPT_KEY; do
+  if [[ -n "${!name:-}" ]]; then
+    overrides+=("name=$name,value=${!name},type=PLAINTEXT")
+  fi
+done
+
+build_id="$(aws codebuild start-build \
+  --project-name "$CODEBUILD_PROJECT" \
+  --region "$region" \
+  --environment-variables-override "${overrides[@]}" \
+  --query 'build.id' \
+  --output text)"
 echo "Started CodeBuild lifecycle action '$action': $build_id"
 
 for attempt in $(seq 1 720); do

@@ -104,6 +104,7 @@ def main() -> int:
         raise SmokeFailure(f"request without API key returned HTTP {status}, expected 403")
 
     for name, url in urls.items():
+        started = time.monotonic()
         response = post_with_retry(
             url,
             keys[name],
@@ -111,7 +112,8 @@ def main() -> int:
         )
         if not response.get("choices"):
             raise SmokeFailure(f"{name} did not return a chat completion")
-        print(f"PASS {name}: normal inference")
+        elapsed = time.monotonic() - started
+        print(f"PASS {name}: normal inference after {elapsed:.1f}s")
 
     email = "demo.user@example.com"
     pii_response = post_with_retry(

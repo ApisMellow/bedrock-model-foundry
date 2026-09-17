@@ -1,7 +1,28 @@
 locals {
-  model_prefix        = "models/qwen-2-5-1-5b-instruct"
-  imported_model_name = "${var.project_name}-qwen-2-5-1-5b"
+  model               = var.models["default"]
+  model_prefix        = local.model.s3_prefix
+  imported_model_name = "${var.project_name}-${local.model.imported_model_name}"
   script_key          = "automation/model_lifecycle.py"
+  model_deployment_id = sha256(jsonencode({
+    project_name   = var.project_name
+    region         = var.aws_region
+    model          = local.model
+    lifecycle_code = aws_s3_object.lifecycle_script.etag
+  }))
+  lifecycle_identity = {
+    project_name          = aws_codebuild_project.lifecycle.name
+    region                = var.aws_region
+    hf_model_id           = local.model.hf_model_id
+    model_revision        = local.model.revision
+    bucket                = aws_s3_bucket.models.id
+    prefix                = local.model_prefix
+    parameter_name        = aws_ssm_parameter.imported_model_arn.name
+    import_role_arn       = aws_iam_role.bedrock_import.arn
+    imported_model_name   = local.imported_model_name
+    lifecycle_script_key  = aws_s3_object.lifecycle_script.key
+    lifecycle_script_etag = aws_s3_object.lifecycle_script.etag
+    model_deployment_id   = local.model_deployment_id
+  }
 }
 
 resource "aws_s3_bucket" "models" {
@@ -89,12 +110,17 @@ resource "aws_codebuild_project" "lifecycle" {
 
     environment_variable {
       name  = "HF_MODEL_ID"
-      value = var.hf_model_id
+      value = local.model.hf_model_id
     }
 
     environment_variable {
       name  = "MODEL_REVISION"
-      value = var.model_revision
+      value = local.model.revision
+    }
+
+    environment_variable {
+      name  = "MODEL_DEPLOYMENT_ID"
+      value = local.model_deployment_id
     }
 
     environment_variable {
@@ -136,32 +162,28 @@ resource "aws_codebuild_project" "lifecycle" {
   }
 }
 
-resource "terraform_data" "model_lifecycle" {
-  input = {
-    project_name = aws_codebuild_project.lifecycle.name
-    region       = var.aws_region
-  }
+# This resource is created before the fallible import. It stays in state even when
+# the import resource becomes tainted, so a later destroy can still run cleanup.
+resource "terraform_data" "model_cleanup" {
+  input = local.lifecycle_identity
 
-  triggers_replace = [
-    var.hf_model_id,
-    var.model_revision,
-    aws_s3_object.lifecycle_script.etag,
-  ]
-
-  provisioner "local-exec" {
-    command = "bash ${path.module}/../scripts/run-codebuild.sh import"
-    environment = {
-      CODEBUILD_PROJECT = self.output.project_name
-      AWS_REGION        = self.output.region
-    }
-  }
+  triggers_replace = [local.lifecycle_identity]
 
   provisioner "local-exec" {
     when    = destroy
     command = "bash ${path.module}/../scripts/run-codebuild.sh cleanup"
     environment = {
-      CODEBUILD_PROJECT = self.output.project_name
-      AWS_REGION        = self.output.region
+      CODEBUILD_PROJECT    = self.output.project_name
+      AWS_REGION           = self.output.region
+      HF_MODEL_ID          = self.output.hf_model_id
+      MODEL_REVISION       = self.output.model_revision
+      MODEL_DEPLOYMENT_ID  = self.output.model_deployment_id
+      S3_BUCKET            = self.output.bucket
+      S3_PREFIX            = self.output.prefix
+      SSM_PARAMETER_NAME   = self.output.parameter_name
+      IMPORT_ROLE_ARN      = self.output.import_role_arn
+      IMPORTED_MODEL_NAME  = self.output.imported_model_name
+      LIFECYCLE_SCRIPT_KEY = self.output.lifecycle_script_key
     }
   }
 
@@ -172,7 +194,32 @@ resource "terraform_data" "model_lifecycle" {
   ]
 }
 
+resource "terraform_data" "model_import" {
+  input = local.lifecycle_identity
+
+  triggers_replace = [local.lifecycle_identity]
+
+  provisioner "local-exec" {
+    command = "bash ${path.module}/../scripts/run-codebuild.sh import"
+    environment = {
+      CODEBUILD_PROJECT    = self.output.project_name
+      AWS_REGION           = self.output.region
+      HF_MODEL_ID          = self.output.hf_model_id
+      MODEL_REVISION       = self.output.model_revision
+      MODEL_DEPLOYMENT_ID  = self.output.model_deployment_id
+      S3_BUCKET            = self.output.bucket
+      S3_PREFIX            = self.output.prefix
+      SSM_PARAMETER_NAME   = self.output.parameter_name
+      IMPORT_ROLE_ARN      = self.output.import_role_arn
+      IMPORTED_MODEL_NAME  = self.output.imported_model_name
+      LIFECYCLE_SCRIPT_KEY = self.output.lifecycle_script_key
+    }
+  }
+
+  depends_on = [terraform_data.model_cleanup]
+}
+
 data "aws_ssm_parameter" "imported_model_arn" {
   name       = aws_ssm_parameter.imported_model_arn.name
-  depends_on = [terraform_data.model_lifecycle]
+  depends_on = [terraform_data.model_import]
 }

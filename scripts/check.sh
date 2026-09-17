@@ -3,6 +3,7 @@ set -euo pipefail
 
 python3 -m compileall -q src scripts
 python3 -m pytest -q
+python3 scripts/repository-policy.py
 
 for script in scripts/*.sh; do
   bash -n "$script"

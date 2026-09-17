@@ -211,7 +211,25 @@ resource "aws_api_gateway_stage" "demo" {
   deployment_id = aws_api_gateway_deployment.this.id
   rest_api_id   = aws_api_gateway_rest_api.this.id
   stage_name    = "demo"
-  tags          = var.tags
+
+  dynamic "access_log_settings" {
+    for_each = var.api_gateway_access_log_destination_arn == null ? [] : [var.api_gateway_access_log_destination_arn]
+
+    content {
+      destination_arn = access_log_settings.value
+      format = jsonencode({
+        requestId        = "$context.requestId"
+        requestTime      = "$context.requestTime"
+        httpMethod       = "$context.httpMethod"
+        resourcePath     = "$context.resourcePath"
+        status           = "$context.status"
+        responseLength   = "$context.responseLength"
+        integrationError = "$context.integrationErrorMessage"
+      })
+    }
+  }
+
+  tags = var.tags
 }
 
 resource "aws_api_gateway_api_key" "this" {

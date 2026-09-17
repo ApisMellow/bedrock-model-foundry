@@ -101,7 +101,7 @@
 - [x] **Step 2: Implement S3, IAM, SSM, and CodeBuild**
   Follow the AWS model-import IAM role guidance linked from `docs/troubleshooting.md`.
 - [x] **Step 3: Implement Terraform orchestration**
-  `terraform_data` starts CodeBuild in import mode during apply and cleanup mode during destroy. Local code only starts/waits for AWS jobs.
+  A durable cleanup anchor is created before the fallible import resource. Both start CodeBuild with the exact model identity, and local code only starts or waits for AWS jobs.
 - [x] **Step 4: Format and validate**
   Run: `terraform -chdir=terraform fmt -recursive -check`
   Run: `terraform -chdir=terraform init -backend=false && terraform -chdir=terraform validate`
@@ -123,14 +123,14 @@
 - [x] **Step 2: Implement guardrail/version and least-privilege Lambda**
   Each module instance gets one immutable guardrail version and a role scoped to one model and one guardrail.
 - [x] **Step 3: Implement API Gateway REST API**
-  Create `POST /v1/chat/completions`, API key, usage plan, Lambda permission, deployment, stage, access logs, and outputs.
+  Create `POST /v1/chat/completions`, API key, usage plan, Lambda permission, deployment, stage, structured Lambda logs, optional structured API Gateway access-log settings, and outputs. Keep ownership of the account-wide API Gateway log role in the adoption stack.
 - [x] **Step 4: Instantiate two endpoints**
   Add `pii-mask` and `denied-topic` against the same imported model.
 
 ### Task 6: Smoke tests and operator validation
 
 **Files:**
-- Create: `scripts/smoke-test.py`
+- Create: `scripts/smoke-test.py`, `scripts/audit-teardown.py`
 - Create: `scripts/check.sh`
 - Create: `tests/test_project_policy.py`
 
@@ -141,7 +141,7 @@
 - [x] **Step 1: Write project policy tests**
   Verify the default model/revision, remote-only staging documentation, two endpoint definitions, and absence of unfinished placeholders.
 - [x] **Step 2: Implement smoke client**
-  Retry HTTP 503 responses using `Retry-After` for at most five minutes; never print API keys.
+  Retry HTTP 503 responses using `Retry-After` for at most five minutes; never print API keys. Add a credentialed post-destroy audit for exact project resources.
 - [x] **Step 3: Implement offline check script**
   Run Python compile, pytest, shell syntax, Terraform formatting/validation when available, and SVG/XML parsing.
 - [x] **Step 4: Run offline checks**
