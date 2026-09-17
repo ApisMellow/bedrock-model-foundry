@@ -44,12 +44,16 @@ This workstation blocks direct Hugging Face traffic through its web filter. That
 
 ## Offline checks
 
-Create a Python environment if desired, install test dependencies, then run:
+Create the environment once, then run the checks:
 
 ```bash
-python3 -m pip install -r requirements-dev.txt
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
 ./scripts/check.sh
 ```
+
+`scripts/check.sh` uses `.venv` when it exists and the system interpreter
+otherwise. Set `PYTHON` to choose a different one.
 
 The check script compiles the Python sources, runs unit tests, checks shell syntax, formats Terraform, validates Terraform when providers are initialized, and parses the SVG.
 
@@ -60,6 +64,16 @@ Copy the example settings if you need to change the Region or tags:
 ```bash
 cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 ```
+
+One command deploys and leaves the demo ready to talk to:
+
+```bash
+./scripts/demo-up.sh
+```
+
+It applies, writes the harness configuration, waits for the API key to
+propagate, warms the imported model, and prints the summary below. The steps
+are also available individually.
 
 Initialize, review, and apply:
 
@@ -134,8 +148,13 @@ Generate the configuration from the deployed outputs, then start the shim:
 
 ```bash
 python3 scripts/generate-harness-config.py
-python3 harness/foundry_shim.py
+python3 harness/foundry_shim.py --keep-warm
 ```
+
+`--keep-warm` pings the endpoint every four minutes, inside the five-minute
+billing window, so the model does not scale to zero between questions. Without
+it a pause in the conversation costs the next question a restore of about a
+minute.
 
 The generator writes `harness/foundry-endpoints.json` with the endpoint URLs
 and API keys, and a project-level `opencode.json` that points at the shim and
@@ -181,6 +200,13 @@ Any OpenAI-compatible client can use the shim by pointing its base URL at
 themselves do not depend on it.
 
 ## Destroy
+
+```bash
+./scripts/demo-down.sh
+```
+
+That stops the local shim, destroys the stack, runs the teardown audit, and
+removes the generated configuration. The individual steps:
 
 ```bash
 terraform -chdir=terraform plan -destroy -out=destroy.tfplan
@@ -235,6 +261,8 @@ harness/
   foundry_shim.py            local OpenAI-compatible adapter for agent harnesses
 scripts/
   check.sh                   offline verification
+  demo-up.sh                 deploy, wait out propagation, warm the model
+  demo-down.sh               destroy, audit, remove generated files
   generate-harness-config.py harness configuration from Terraform outputs
   run-codebuild.sh           Terraform's remote-job waiter
   audit-teardown.py          credentialed post-destroy resource audit

@@ -23,6 +23,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, List, Tuple
 
@@ -39,6 +40,9 @@ COLD_MODEL_WAIT = 90
 # call whose prompt plus requested output exceeds that window, so cap the
 # request at a budget that leaves room for the conversation.
 MAX_OUTPUT_TOKENS = 4096
+# Inference bills in five-minute windows, so a ping inside that window keeps the
+# model hot without paying for a second window.
+KEEP_WARM_SECONDS = 240
 # Set FOUNDRY_SHIM_DEBUG=1 to print each forwarded body. Prompts are visible in
 # that mode, so keep it off unless troubleshooting a harness.
 DEBUG = os.environ.get("FOUNDRY_SHIM_DEBUG") == "1"
@@ -224,6 +228,27 @@ def call_endpoint(
         return 200, completion_envelope(payload, model)
 
 
+def keep_warm_target(endpoints: Dict[str, Dict[str, str]]) -> Dict[str, str]:
+    """Any endpoint will do: they share one imported model, and one copy."""
+    return endpoints[sorted(endpoints)[0]]
+
+
+def warm_once(endpoint: Dict[str, str], *, caller=call_endpoint):
+    return caller(endpoint, {"messages": [{"role": "user", "content": "ping"}], "max_tokens": 1}, "keep-warm")
+
+
+def keep_warm_loop(endpoint, interval=KEEP_WARM_SECONDS, *, caller=call_endpoint, sleep=time.sleep, rounds=None):
+    """Ping until stopped. A failed ping is never fatal: the next one retries."""
+    count = 0
+    while rounds is None or count < rounds:
+        try:
+            warm_once(endpoint, caller=caller)
+        except Exception as error:  # a demo must not die on one failed ping
+            sys.stderr.write(f"  shim keep-warm ping failed: {error}\n")
+        count += 1
+        sleep(interval)
+
+
 class Handler(BaseHTTPRequestHandler):
     endpoints: Dict[str, Dict[str, str]] = {}
     max_output_tokens = MAX_OUTPUT_TOKENS
@@ -306,6 +331,10 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8787)
     parser.add_argument(
+        "--keep-warm", action="store_true",
+        help=f"ping every {KEEP_WARM_SECONDS}s so the model does not scale to zero",
+    )
+    parser.add_argument(
         "--max-output-tokens", type=int, default=MAX_OUTPUT_TOKENS,
         help="cap on max_tokens forwarded to the endpoint",
     )
@@ -313,6 +342,11 @@ def main() -> int:
 
     Handler.endpoints = load_endpoints(args.config)
     Handler.max_output_tokens = args.max_output_tokens
+    if args.keep_warm:
+        target = keep_warm_target(Handler.endpoints)
+        threading.Thread(target=keep_warm_loop, args=(target,), daemon=True).start()
+        print(f"  keeping the model warm every {KEEP_WARM_SECONDS}s")
+
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Model Foundry shim on http://{args.host}:{args.port}/v1")
     for name in sorted(Handler.endpoints):

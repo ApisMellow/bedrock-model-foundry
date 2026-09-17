@@ -293,3 +293,49 @@ class TestOutputBudget:
             max_output_tokens=4096,
         )
         assert clean["max_tokens"] == 4096
+
+
+class TestKeepWarm:
+    def test_sends_the_smallest_possible_request(self):
+        sent = {}
+
+        def caller(endpoint, body, model, **kwargs):
+            sent.update(endpoint=endpoint, body=body, model=model)
+            return 200, {}
+
+        shim.warm_once(ENDPOINTS["pii-mask"], caller=caller)
+        assert sent["body"]["max_tokens"] == 1
+        assert sent["endpoint"] == ENDPOINTS["pii-mask"]
+
+    def test_loop_pings_on_each_interval(self):
+        calls, slept = [], []
+
+        def caller(endpoint, body, model, **kwargs):
+            calls.append(model)
+            return 200, {}
+
+        shim.keep_warm_loop(
+            ENDPOINTS["pii-mask"], interval=240,
+            caller=caller, sleep=slept.append, rounds=3,
+        )
+        assert len(calls) == 3
+        assert slept == [240, 240, 240]
+
+    def test_a_failed_ping_does_not_stop_the_loop(self):
+        calls = []
+
+        def caller(endpoint, body, model, **kwargs):
+            calls.append(1)
+            raise RuntimeError("endpoint briefly unreachable")
+
+        shim.keep_warm_loop(
+            ENDPOINTS["pii-mask"], interval=1,
+            caller=caller, sleep=lambda s: None, rounds=2,
+        )
+        assert len(calls) == 2
+
+    def test_one_endpoint_is_enough_because_they_share_a_model(self):
+        # Both endpoints invoke the same imported model, so warming either one
+        # keeps the single model copy hot.
+        target = shim.keep_warm_target(ENDPOINTS)
+        assert target in ENDPOINTS.values()
