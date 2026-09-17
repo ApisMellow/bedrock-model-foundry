@@ -13,3 +13,7 @@ terraform/crash.log
 terraform/terraform.tfvars
 
 .DS_Store
+
+# Generated harness config (endpoint file holds API keys)
+harness/foundry-endpoints.json
+opencode.json

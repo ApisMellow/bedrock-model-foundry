@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-python3 -m compileall -q src scripts
+python3 -m compileall -q src scripts harness
 python3 -m pytest -q
 python3 scripts/repository-policy.py
 

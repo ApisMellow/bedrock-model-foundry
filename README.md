@@ -95,6 +95,36 @@ python3 scripts/smoke-test.py
 
 The script checks missing-key rejection, normal inference on both endpoints, PII anonymization, denied-topic blocking, and the imported-model restore path. It reports time to first successful response for each endpoint. A cold model can return `ModelNotReadyException`. The Lambda maps that state to HTTP 503, and the smoke client retries for up to five minutes without printing API keys.
 
+## Drive the endpoints from a local agent harness
+
+The endpoints are OpenAI-shaped, but an agent harness sends more than the
+endpoint accepts: `stream`, `tools`, and `tool_choice` are outside the
+allowlist in `validate_parameters`, and API Gateway reads the key from
+`x-api-key` rather than an `Authorization` header. `harness/foundry_shim.py`
+is a local translator for exactly those differences. It adds no intelligence
+and makes no policy decision; both guardrails still run in AWS.
+
+Generate the configuration from the deployed outputs, then start the shim:
+
+```bash
+python3 scripts/generate-harness-config.py
+python3 harness/foundry_shim.py
+```
+
+The generator writes `harness/foundry-endpoints.json` with the endpoint URLs
+and API keys, and a project-level `opencode.json` that points at the shim and
+contains no secret. Git ignores both.
+
+Run `opencode` from this directory and every deployed endpoint appears as a
+model: selecting `foundry/pii-mask` or `foundry/denied-topic` switches
+guardrails mid-conversation against the same imported model. A blocked request
+arrives as an assistant turn carrying the guardrail's own message, so a demo
+shows the refusal in the transcript instead of a client-side error.
+
+Any OpenAI-compatible client can use the shim by pointing its base URL at
+`http://127.0.0.1:8787/v1`. `scripts/smoke-test.py` and the endpoints
+themselves do not depend on it.
+
 ## Destroy
 
 ```bash
@@ -145,8 +175,11 @@ docs/
   superpowers/               approved design and implementation plan
   roadmap.md                 IAM adoption and platform extension notes
   troubleshooting.md         import-role and environment checks
+harness/
+  foundry_shim.py            local OpenAI-compatible adapter for agent harnesses
 scripts/
   check.sh                   offline verification
+  generate-harness-config.py harness configuration from Terraform outputs
   run-codebuild.sh           Terraform's remote-job waiter
   audit-teardown.py          credentialed post-destroy resource audit
   smoke-test.py              credentialed endpoint checks
