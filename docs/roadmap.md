@@ -54,6 +54,24 @@ Run three tests in a lab account before relying on inline enforcement:
 
 Repeat those calls with a Lambda role that has a `bedrock:GuardrailIdentifier` condition on `bedrock:InvokeModel`. Keep the explicit `ApplyGuardrail` path until both imported-model behaviors are proven.
 
+## Live console for demonstrations
+
+A demonstration currently shows Terraform log lines while the stack builds. A local web console would show the same progress against the architecture diagram: every component drawn from the start, each one lit as it comes online.
+
+The console should read state rather than accept it. Each element maps to a check that already exists:
+
+- staging bucket, IAM roles, CodeBuild project, and SSM parameter: resource existence calls;
+- model download and upload: CodeBuild phase and the lifecycle job's own log lines;
+- imported model: the Bedrock import job status, then the imported-model listing;
+- guardrails, Lambdas, REST APIs, keys, and usage plans: per-endpoint describe calls;
+- first warm response: the time to first successful invocation the smoke test already measures.
+
+A small local server can poll those checks on an interval and push state changes to the page over server-sent events, reusing the shim's pattern. `docs/architecture/bedrock-model-foundry.mmd` is the diagram source, so the console and the customer diagram cannot drift apart.
+
+Two properties matter more than the visual. The console must be read-only, because a demonstration aid that can mutate infrastructure is a liability. It must also distinguish "not yet created" from "created and unhealthy", since a demonstration audience reads a dark component as a failure either way.
+
+Teardown deserves the same treatment in reverse: components going dark as `terraform destroy` removes them ends a demonstration on the cost story rather than on a scrolling log.
+
 ## Shared observability and production controls
 
 The demo keeps structured Lambda logs inside resources it owns and exposes `api_gateway_access_log_destination_arn` for structured REST access logs. API Gateway REST execution access logging requires an account-wide CloudWatch role, so the disposable module does not create or replace that shared setting. An adoption stack should manage the account role and destination log group once, pass the group ARN to this module, and set retention centrally. Prompt and response bodies should remain excluded unless a reviewed data policy explicitly permits them.
