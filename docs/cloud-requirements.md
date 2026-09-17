@@ -192,7 +192,9 @@ Derived from a full deploy in a lab account on 2026-09-17, by reading CloudTrail
 
 Three additions are not visible in CloudTrail and were added from the Terraform source: `iam:PassRole`, which is authorized implicitly, S3 object-level actions, which are data events and off by default, and `logs:PutLogEvents`.
 
-Teardown actions (`Delete*`, `s3:DeleteObjectVersion`) are included by symmetry with what the deploy created. They were not exercised at the time of writing, because the demo stack was left running.
+Teardown was then exercised and read from CloudTrail the same way. The deploying identity issued `apigateway:Delete{ApiKey,Deployment,Integration,Method,Resource,RestApi,Stage,UsagePlan,UsagePlanKey}`, `bedrock:DeleteGuardrail`, `codebuild:DeleteProject`, `iam:DeleteRole` and `iam:DeleteRolePolicy`, `lambda:DeleteFunction` and `lambda:RemovePermission`, `logs:DeleteLogGroup`, `ssm:DeleteParameter`, and `s3:DeleteBucket`, `s3:DeleteBucketEncryption`, `s3:DeleteBucketPublicAccessBlock`. The lifecycle role issued `bedrock:DeleteImportedModel`. Every one is covered by the policy above; the two S3 configuration removals authorize under `s3:PutEncryptionConfiguration` and `s3:PutBucketPublicAccessBlock` rather than a delete action of their own.
+
+`s3:DeleteObject` and `s3:DeleteObjectVersion` remain the exception: emptying the versioned bucket is a data event, so it is absent from the trail and included from the source.
 
 The policy was then run through `iam:SimulateCustomPolicy` against real resource ARNs from the deployed stack. Seventeen of nineteen required actions evaluated `allowed`, including all three `iam:PassRole` cases with their service conditions. Five negative controls evaluated `implicitDeny`: deleting an unrelated bucket, creating an unrelated function, creating or passing an `Admin` role, and starting a model import job, which belongs to the lifecycle role rather than the operator.
 

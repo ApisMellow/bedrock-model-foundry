@@ -32,3 +32,35 @@ bash scripts/run-codebuild.sh cleanup
 ```
 
 Run `terraform destroy` again, followed by the teardown audit. Do not suppress a Bedrock delete error; an imported model left behind can retain cost exposure.
+
+## Bedrock calls fail with "Please make sure your API Key is valid"
+
+A Terraform plan or apply that reaches every other service but returns 403 on
+`GetGuardrail`, `GetImportedModel`, or another Bedrock call is usually reading a
+Bedrock API key from the environment instead of the credentials everything else
+uses:
+
+```bash
+echo ${AWS_BEARER_TOKEN_BEDROCK:+set}
+unset AWS_BEARER_TOKEN_BEDROCK
+```
+
+The AWS SDK prefers `AWS_BEARER_TOKEN_BEDROCK` over SigV4 for Bedrock alone, so
+an expired token breaks model and guardrail operations while S3, IAM, Lambda,
+and API Gateway keep working. The error names the API key rather than the
+environment, which makes it read like a permissions problem.
+
+## The harness asks you to sign in
+
+`opencode.json` is project-level configuration. Started from another directory,
+opencode never sees the `foundry` provider and offers whichever provider it does
+have, which looks like a request to authenticate. Start it from the repository
+root and confirm the provider is registered:
+
+```bash
+opencode models | grep foundry
+```
+
+Two lines means the harness is wired up. No lines means the wrong directory.
+The foundry provider needs no credential: the generated configuration carries a
+placeholder, and the shim holds the real API key.
