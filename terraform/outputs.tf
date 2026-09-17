@@ -1,6 +1,6 @@
 output "imported_model_arn" {
   description = "ARN published by the successful remote import."
-  value       = data.aws_ssm_parameter.imported_model_arn.value
+  value       = local.imported_model_arn
 }
 
 output "endpoint_urls" {

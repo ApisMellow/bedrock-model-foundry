@@ -10,7 +10,7 @@ module "endpoint" {
 
   name                                   = each.key
   project_name                           = var.project_name
-  model_arn                              = data.aws_ssm_parameter.imported_model_arn.value
+  model_arn                              = local.imported_model_arn
   lambda_zip_path                        = data.archive_file.endpoint.output_path
   lambda_zip_hash                        = data.archive_file.endpoint.output_base64sha256
   guardrail_type                         = each.value.guardrail_type

@@ -3,6 +3,9 @@ locals {
   model_prefix        = local.model.s3_prefix
   imported_model_name = "${var.project_name}-${local.model.imported_model_name}"
   script_key          = "automation/model_lifecycle.py"
+  # The SSM provider marks every parameter value sensitive. The handoff value is a
+  # model ARN, not a secret, so unmark it once here for outputs and endpoint wiring.
+  imported_model_arn = nonsensitive(data.aws_ssm_parameter.imported_model_arn.value)
   model_deployment_id = sha256(jsonencode({
     project_name   = var.project_name
     region         = var.aws_region
