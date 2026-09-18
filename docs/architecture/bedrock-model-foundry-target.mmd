@@ -1,0 +1,45 @@
+flowchart TB
+  subgraph ACCT["AWS account"]
+    direction TB
+    subgraph VPC["VPC: private subnets, no internet gateway on the request path"]
+      direction TB
+      APP["Customer app / agent harness<br/>IAM-signed request"]
+      VEAPI["VPC endpoint: execute-api"]
+      APIGW["Private API Gateway"]
+      LPII["Lambda: pii-mask"]
+      LTOP["Lambda: denied-topic"]
+      VERT["VPC endpoint: bedrock-runtime"]
+
+      APP --> VEAPI --> APIGW
+      APIGW -->|/pii-mask| LPII
+      APIGW -->|/denied-topic| LTOP
+      LPII -->|"ApplyGuardrail in, InvokeModel,<br/>ApplyGuardrail out"| VERT
+      LTOP --> VERT
+
+      CB["CodeBuild lifecycle job<br/>build and teardown only"]
+      VEBUILD["VPC endpoints: bedrock, S3 gateway,<br/>SSM, CloudWatch Logs"]
+      NAT["NAT gateway + Network Firewall<br/>allowlist: Hugging Face hosts only"]
+      CB --> VEBUILD
+      CB --> NAT
+    end
+    S3[("Private S3 staging bucket")]
+    VEBUILD --> S3
+  end
+
+  HF["huggingface.co<br/>Qwen2.5-1.5B-Instruct @ 775b11a"]
+  NAT --> HF
+
+  subgraph BR["Amazon Bedrock: AWS-managed service boundary"]
+    direction TB
+    GR["Guardrail versions<br/>pii · topic"]
+    IM["Imported model"]
+    subgraph POOL["Model copies, scaled 0..N by Bedrock"]
+      C1["copy 1<br/>k CMUs"]
+      C2["copy 2<br/>k CMUs"]
+    end
+    IM --> POOL
+  end
+
+  VERT -->|PrivateLink| GR
+  VERT -->|PrivateLink| IM
+  S3 -->|"import job reads<br/>via import role"| IM

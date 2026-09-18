@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1080" viewBox="0 0 1400 1080" role="img" aria-labelledby="title desc">
+  <title id="title">Bedrock Model Foundry target network design</title>
+  <desc id="desc">Target design. Every component the project operates runs in private VPC subnets. Clients reach a private API Gateway through an execute-api VPC endpoint, Lambdas reach Bedrock only through a bedrock-runtime PrivateLink endpoint, and CodeBuild's one internet route is a NAT gateway behind a Network Firewall allowlist for Hugging Face. Inference runs on Bedrock-managed model copies billed in Custom Model Units.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#172B4D"/>
+    </marker>
+    <style>
+      .title{font:700 34px Arial,sans-serif;fill:#102A43}.subtitle{font:400 18px Arial,sans-serif;fill:#334E68}
+      .laneTitle{font:700 16px Arial,sans-serif;fill:#102A43;letter-spacing:1px}.nodeTitle{font:700 17px Arial,sans-serif;fill:#102A43}
+      .nodeText{font:400 14px Arial,sans-serif;fill:#243B53}.small{font:400 13px Arial,sans-serif;fill:#334E68}
+      .arrow{stroke:#172B4D;stroke-width:3;fill:none;marker-end:url(#arrow)}.line{stroke:#172B4D;stroke-width:3;fill:none}
+      .model{fill:#E6F6FF;stroke:#0073BB;stroke-width:3}.control{fill:#FFF4D6;stroke:#B7791F;stroke-width:3}
+      .runtime{fill:#E9F9EE;stroke:#26834A;stroke-width:3}.safety{fill:#F4EAFE;stroke:#7048A8;stroke-width:3}
+      .network{fill:#FDECEC;stroke:#C0392B;stroke-width:3}.external{fill:#F2F4F7;stroke:#52606D;stroke-width:3}
+      .account{fill:#F5FAFF;stroke:#9FB3C8;stroke-width:2}.vpc{fill:#F8FFF9;stroke:#26834A;stroke-width:2.5;stroke-dasharray:10 6}
+      .aws{fill:#FBF7FF;stroke:#7048A8;stroke-width:2}.pool{fill:#FFFFFF;stroke:#0073BB;stroke-width:2;stroke-dasharray:8 6}
+      .divider{stroke:#9FB3C8;stroke-width:1.5;stroke-dasharray:6 6}
+    </style>
+  </defs>
+
+  <rect width="1400" height="1080" fill="#FFFFFF"/>
+  <text x="55" y="58" class="title">Bedrock Model Foundry: target network design</text>
+  <text x="55" y="88" class="subtitle">Everything we run sits in private subnets. The model is reachable only through PrivateLink.</text>
+
+  <!-- AWS account -->
+  <rect x="40" y="115" width="1100" height="685" rx="18" class="account"/>
+  <text x="60" y="145" class="laneTitle">AWS ACCOUNT</text>
+
+  <!-- VPC -->
+  <rect x="65" y="160" width="1050" height="495" rx="16" class="vpc"/>
+  <text x="85" y="190" class="laneTitle">VPC · PRIVATE SUBNETS · NO INTERNET GATEWAY ON THE REQUEST PATH</text>
+
+  <!-- request path -->
+  <rect x="90" y="225" width="180" height="100" rx="12" class="external"/>
+  <text x="180" y="263" text-anchor="middle" class="nodeTitle">Customer app</text>
+  <text x="180" y="287" text-anchor="middle" class="nodeText">or agent harness</text>
+  <text x="180" y="308" text-anchor="middle" class="small">IAM-signed request</text>
+
+  <rect x="305" y="225" width="170" height="100" rx="12" class="network"/>
+  <text x="390" y="263" text-anchor="middle" class="nodeTitle">VPC endpoint</text>
+  <text x="390" y="287" text-anchor="middle" class="nodeText">execute-api</text>
+  <text x="390" y="308" text-anchor="middle" class="small">only way in</text>
+
+  <rect x="510" y="225" width="190" height="100" rx="12" class="control"/>
+  <text x="605" y="263" text-anchor="middle" class="nodeTitle">Private API</text>
+  <text x="605" y="287" text-anchor="middle" class="nodeText">Gateway</text>
+  <text x="605" y="308" text-anchor="middle" class="small">IAM authorization</text>
+
+  <rect x="740" y="210" width="220" height="60" rx="12" class="runtime"/>
+  <text x="850" y="236" text-anchor="middle" class="nodeTitle">Lambda: pii-mask</text>
+  <text x="850" y="257" text-anchor="middle" class="small">/pii-mask</text>
+
+  <rect x="740" y="290" width="220" height="60" rx="12" class="runtime"/>
+  <text x="850" y="316" text-anchor="middle" class="nodeTitle">Lambda: denied-topic</text>
+  <text x="850" y="337" text-anchor="middle" class="small">/denied-topic</text>
+
+  <path d="M270 275 H305" class="arrow"/><path d="M475 275 H510" class="arrow"/>
+  <path d="M700 260 H720 V240 H740" class="arrow"/><path d="M700 290 H720 V320 H740" class="arrow"/>
+
+  <rect x="740" y="390" width="220" height="80" rx="12" class="network"/>
+  <text x="850" y="420" text-anchor="middle" class="nodeTitle">VPC endpoint</text>
+  <text x="850" y="443" text-anchor="middle" class="nodeText">bedrock-runtime</text>
+  <text x="850" y="462" text-anchor="middle" class="small">PrivateLink</text>
+
+  <path d="M850 350 V390" class="arrow"/>
+  <path d="M960 240 H990 V430 H960" class="arrow"/>
+  <text x="725" y="368" text-anchor="end" class="small">ApplyGuardrail in → InvokeModel → ApplyGuardrail out</text>
+
+  <line x1="85" y1="495" x2="1095" y2="495" class="divider"/>
+  <text x="85" y="522" class="laneTitle">BUILD PATH · DEPLOY AND TEARDOWN ONLY</text>
+
+  <!-- build path -->
+  <rect x="90" y="540" width="230" height="95" rx="12" class="network"/>
+  <text x="205" y="574" text-anchor="middle" class="nodeTitle">VPC endpoints</text>
+  <text x="205" y="597" text-anchor="middle" class="nodeText">bedrock · S3 gateway</text>
+  <text x="205" y="618" text-anchor="middle" class="nodeText">SSM · CloudWatch Logs</text>
+
+  <rect x="360" y="540" width="220" height="95" rx="12" class="control"/>
+  <text x="470" y="574" text-anchor="middle" class="nodeTitle">CodeBuild</text>
+  <text x="470" y="597" text-anchor="middle" class="nodeText">lifecycle job</text>
+  <text x="470" y="618" text-anchor="middle" class="small">download, stage, import, clean up</text>
+
+  <rect x="620" y="540" width="240" height="95" rx="12" class="network"/>
+  <text x="740" y="574" text-anchor="middle" class="nodeTitle">NAT + Network Firewall</text>
+  <text x="740" y="597" text-anchor="middle" class="nodeText">domain allowlist</text>
+  <text x="740" y="618" text-anchor="middle" class="small">Hugging Face hosts only</text>
+
+  <path d="M360 587 H320" class="arrow"/><path d="M580 587 H620" class="arrow"/>
+  <path d="M860 587 H1180" class="arrow"/>
+
+  <!-- S3, inside the account but outside the VPC -->
+  <rect x="90" y="690" width="230" height="85" rx="12" class="model"/>
+  <text x="205" y="722" text-anchor="middle" class="nodeTitle">Private S3 staging</text>
+  <text x="205" y="746" text-anchor="middle" class="small">aws:SourceVpce + import role</text>
+  <path d="M205 635 V690" class="arrow"/>
+
+  <!-- status note -->
+  <rect x="1165" y="130" width="195" height="160" rx="12" class="external"/>
+  <text x="1180" y="158" class="nodeTitle">Target, not built</text>
+  <text x="1180" y="184" class="small">The deployed demo uses</text>
+  <text x="1180" y="203" class="small">a public regional API,</text>
+  <text x="1180" y="222" class="small">API keys, Lambdas with</text>
+  <text x="1180" y="241" class="small">no VPC, and open</text>
+  <text x="1180" y="260" class="small">CodeBuild egress.</text>
+
+  <!-- internet -->
+  <rect x="1180" y="535" width="180" height="105" rx="12" class="external"/>
+  <text x="1270" y="569" text-anchor="middle" class="nodeTitle">Hugging Face</text>
+  <text x="1270" y="593" text-anchor="middle" class="nodeText">Qwen2.5-1.5B</text>
+  <text x="1270" y="614" text-anchor="middle" class="small">pinned @ 775b11a</text>
+
+  <!-- Bedrock -->
+  <rect x="40" y="840" width="1320" height="215" rx="18" class="aws"/>
+  <text x="410" y="870" class="laneTitle">AMAZON BEDROCK · AWS-MANAGED SERVICE BOUNDARY</text>
+
+  <rect x="90" y="885" width="280" height="130" rx="12" class="model"/>
+  <text x="230" y="925" text-anchor="middle" class="nodeTitle">Imported model</text>
+  <text x="230" y="951" text-anchor="middle" class="nodeText">Custom Model Import</text>
+  <text x="230" y="975" text-anchor="middle" class="small">one ARN, shared by every endpoint</text>
+
+  <rect x="410" y="885" width="480" height="140" rx="12" class="pool"/>
+  <text x="430" y="910" class="nodeTitle">Model copies, scaled 0..N by Bedrock</text>
+  <rect x="430" y="925" width="130" height="62" rx="10" class="model"/>
+  <text x="495" y="952" text-anchor="middle" class="nodeTitle">copy 1</text>
+  <text x="495" y="973" text-anchor="middle" class="small">k CMUs</text>
+  <rect x="580" y="925" width="130" height="62" rx="10" class="model"/>
+  <text x="645" y="952" text-anchor="middle" class="nodeTitle">copy 2</text>
+  <text x="645" y="973" text-anchor="middle" class="small">k CMUs</text>
+  <text x="760" y="962" text-anchor="middle" class="nodeTitle">…</text>
+  <text x="430" y="1012" class="small">k set by Bedrock at import · billed in 5-minute windows</text>
+  <path d="M370 950 H410" class="arrow"/>
+
+  <rect x="960" y="885" width="260" height="130" rx="12" class="safety"/>
+  <text x="1090" y="925" text-anchor="middle" class="nodeTitle">Guardrail versions</text>
+  <text x="1090" y="951" text-anchor="middle" class="nodeText">pii-mask v1</text>
+  <text x="1090" y="973" text-anchor="middle" class="nodeText">denied-topic v1</text>
+  <!-- PrivateLink bus into Bedrock -->
+  <path d="M850 470 V482 H1060 V815" class="line"/>
+  <path d="M300 815 H1090" class="line"/>
+  <path d="M300 815 V885" class="arrow"/><path d="M1090 815 V885" class="arrow"/>
+  <text x="1070" y="720" class="small">PrivateLink</text>
+
+  <path d="M160 775 V885" class="arrow"/>
+  <text x="170" y="828" class="small">import</text>
+
+</svg>
